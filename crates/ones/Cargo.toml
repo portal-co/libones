@@ -6,3 +6,7 @@ description.workspace = true
 version.workspace = true
 
 [dependencies]
+num-traits = { workspace = true, optional = true }
+
+[features]
+num_traits = ["dep:num-traits"]

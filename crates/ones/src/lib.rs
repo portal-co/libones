@@ -1,18 +1,44 @@
 #![no_std]
 use core::ops::{Add, Not, Sub};
 
-/// Sealed trait implemented only for the six unsigned primitive integer types.
+// When the `num_traits` feature is enabled, `OnesOne` is a pure marker (the
+// seal) and the three capabilities it previously bundled — `one()`, wrapping
+// addition, wrapping subtraction — are supplied by the corresponding
+// `num-traits` traits instead.  Without the feature the hand-rolled impls on
+// each unsigned primitive cover the same ground.
+#[cfg(feature = "num_traits")]
+use num_traits::{One, WrappingAdd, WrappingSub};
+
+/// Sealed marker trait, implemented only for the six unsigned primitive
+/// integer types.
 ///
 /// `OnesSigned<T>` stores a ones'-complement-encoded value as a raw unsigned
 /// bit pattern.  Two's-complement signed primitives are intentionally excluded
 /// because on modern hardware they carry two's-complement semantics that would
-/// interfere with the end-around carry logic.
+/// interfere with the end-around carry logic.  The seal enforces this
+/// constraint structurally: no downstream crate can add an impl.
 pub trait OnesOne: private::Sealed + Sized + Copy {
     /// The value `1` for this type.
+    ///
+    /// Provided by the hand-rolled impls when the `num_traits` feature is
+    /// disabled; shadowed by [`num_traits::One::one`] when it is enabled.
+    #[cfg(not(feature = "num_traits"))]
     const ONE: Self;
-    /// Wrapping addition — equivalent to `u*::wrapping_add`.
+
+    /// Wrapping addition.
+    ///
+    /// Provided by the hand-rolled impls when the `num_traits` feature is
+    /// disabled; the `Add` impl on `OnesSigned` calls
+    /// [`num_traits::WrappingAdd::wrapping_add`] directly when it is enabled.
+    #[cfg(not(feature = "num_traits"))]
     fn ones_wrapping_add(self, rhs: Self) -> Self;
-    /// Wrapping subtraction — equivalent to `u*::wrapping_sub`.
+
+    /// Wrapping subtraction.
+    ///
+    /// Provided by the hand-rolled impls when the `num_traits` feature is
+    /// disabled; unused when it is enabled (subtraction delegates to `Add`
+    /// which uses `WrappingAdd`).
+    #[cfg(not(feature = "num_traits"))]
     fn ones_wrapping_sub(self, rhs: Self) -> Self;
 }
 
@@ -26,6 +52,8 @@ mod private {
     impl Sealed for usize {}
 }
 
+// Hand-rolled impls — only compiled when `num_traits` is not in use.
+#[cfg(not(feature = "num_traits"))]
 macro_rules! impl_ones_one {
     ($($t:ty),+) => {$(
         impl OnesOne for $t {
@@ -35,12 +63,30 @@ macro_rules! impl_ones_one {
         }
     )+};
 }
+#[cfg(not(feature = "num_traits"))]
 impl_ones_one!(u8, u16, u32, u64, u128, usize);
+
+// Trivial marker impls — always compiled regardless of feature flags,
+// because the seal itself must always be satisfied.
+#[cfg(feature = "num_traits")]
+macro_rules! impl_ones_one_marker {
+    ($($t:ty),+) => {$(
+        impl OnesOne for $t {}
+    )+};
+}
+#[cfg(feature = "num_traits")]
+impl_ones_one_marker!(u8, u16, u32, u64, u128, usize);
 
 /// Blanket bound required by `OnesSigned<T>`.
 ///
-/// All components are already covered by [`OnesOne`] plus the standard
-/// operator traits; this alias exists so `impl` blocks stay readable.
+/// When the `num_traits` feature is disabled this pulls in [`OnesOne`] (which
+/// carries `ONE`, `ones_wrapping_add`, and `ones_wrapping_sub`) together with
+/// the standard operator traits.
+///
+/// When the `num_traits` feature is enabled [`OnesOne`] is a pure marker and
+/// the three capabilities are instead supplied by [`num_traits::One`],
+/// [`num_traits::WrappingAdd`], and [`num_traits::WrappingSub`].
+#[cfg(not(feature = "num_traits"))]
 pub trait OnesDeps:
     Sized
     + Copy
@@ -53,12 +99,45 @@ pub trait OnesDeps:
 {
 }
 
+#[cfg(not(feature = "num_traits"))]
 impl<T> OnesDeps for T where
     T: Sized
         + Copy
         + Default
         + PartialOrd
         + OnesOne
+        + Not<Output = Self>
+        + Add<Self, Output = Self>
+        + Sub<Self, Output = Self>
+{
+}
+
+#[cfg(feature = "num_traits")]
+pub trait OnesDeps:
+    Sized
+    + Copy
+    + Default
+    + PartialOrd
+    + OnesOne
+    + One
+    + WrappingAdd
+    + WrappingSub
+    + Not<Output = Self>
+    + Add<Self, Output = Self>
+    + Sub<Self, Output = Self>
+{
+}
+
+#[cfg(feature = "num_traits")]
+impl<T> OnesDeps for T where
+    T: Sized
+        + Copy
+        + Default
+        + PartialOrd
+        + OnesOne
+        + One
+        + WrappingAdd
+        + WrappingSub
         + Not<Output = Self>
         + Add<Self, Output = Self>
         + Sub<Self, Output = Self>
@@ -75,18 +154,32 @@ impl<T> OnesDeps for T where
 #[repr(transparent)]
 pub struct OnesSigned<T>(pub T);
 
+#[cfg(not(feature = "num_traits"))]
 impl<T: OnesDeps> Add for OnesSigned<T> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        // Use wrapping addition so debug builds don't panic on overflow.
         let v = self.0.ones_wrapping_add(rhs.0);
         // End-around carry: if the true mathematical sum ≥ 2^N the wrapped
-        // result is less than either addend.  Add the carry back in (also
-        // wrapping, though it can only overflow if v == T::MAX, which would
-        // mean both operands were all-ones — a degenerate input).
+        // result is less than either addend.
         if v < self.0 {
             OnesSigned(v.ones_wrapping_add(T::ONE))
+        } else {
+            OnesSigned(v)
+        }
+    }
+}
+
+#[cfg(feature = "num_traits")]
+impl<T: OnesDeps> Add for OnesSigned<T> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let v = self.0.wrapping_add(&rhs.0);
+        // End-around carry: if the true mathematical sum ≥ 2^N the wrapped
+        // result is less than either addend.
+        if v < self.0 {
+            OnesSigned(v.wrapping_add(&T::one()))
         } else {
             OnesSigned(v)
         }
@@ -109,10 +202,10 @@ impl<T: OnesDeps> Sub for OnesSigned<T> {
 mod tests {
     use super::*;
 
-    fn w8(v: u8)     -> OnesSigned<u8>   { OnesSigned(v) }
-    fn w16(v: u16)   -> OnesSigned<u16>  { OnesSigned(v) }
-    fn w32(v: u32)   -> OnesSigned<u32>  { OnesSigned(v) }
-    fn w64(v: u64)   -> OnesSigned<u64>  { OnesSigned(v) }
+    fn w8(v: u8)   -> OnesSigned<u8>   { OnesSigned(v) }
+    fn w16(v: u16) -> OnesSigned<u16>  { OnesSigned(v) }
+    fn w32(v: u32) -> OnesSigned<u32>  { OnesSigned(v) }
+    fn w64(v: u64) -> OnesSigned<u64>  { OnesSigned(v) }
 
     // --- Add ---
 
@@ -138,7 +231,7 @@ mod tests {
     #[test]
     fn add_max_plus_max_u8() {
         // 0xFF + 0xFF: wraps to 0xFE; 0xFE < 0xFF → carry → 0xFF.
-        // (All-ones plus all-ones returns all-ones — negative zero is fixed.)
+        // (All-ones plus all-ones returns all-ones — negative zero is idempotent.)
         assert_eq!((w8(0xFF) + w8(0xFF)).0, 0xFF);
     }
 
