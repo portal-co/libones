@@ -1,47 +1,60 @@
 #![no_std]
 use core::ops::{Add, Not, Sub};
 
-// When the `num_traits` feature is enabled, `OnesOne` is a pure marker (the
-// seal) and the three capabilities it previously bundled — `one()`, wrapping
-// addition, wrapping subtraction — are supplied by the corresponding
-// `num-traits` traits instead.  Without the feature the hand-rolled impls on
-// each unsigned primitive cover the same ground.
 #[cfg(feature = "num_traits")]
-use num_traits::{One, WrappingAdd, WrappingSub};
+use num_traits::{Unsigned, WrappingAdd, WrappingSub};
 
-/// Sealed marker trait, implemented only for the six unsigned primitive
-/// integer types.
+// ---------------------------------------------------------------------------
+// OnesOne — the "unsigned bit-pattern" marker/extension trait
+// ---------------------------------------------------------------------------
+//
+// Without `num_traits`: a sealed trait with hand-rolled impls for the six
+// unsigned primitives.  The seal is the only mechanism enforcing the
+// unsigned-only constraint.
+//
+// With `num_traits`: a blanket extension trait over
+// `Unsigned + WrappingAdd + WrappingSub + Not`.  Any type satisfying those
+// bounds automatically implements `OnesOne`; `Unsigned` is what enforces the
+// unsigned-only constraint in place of the seal.
+
+/// Marker trait for types that can serve as the inner bit-pattern of a
+/// [`OnesSigned`] value.
 ///
 /// `OnesSigned<T>` stores a ones'-complement-encoded value as a raw unsigned
-/// bit pattern.  Two's-complement signed primitives are intentionally excluded
+/// bit pattern. Two's-complement signed primitives are intentionally excluded
 /// because on modern hardware they carry two's-complement semantics that would
-/// interfere with the end-around carry logic.  The seal enforces this
-/// constraint structurally: no downstream crate can add an impl.
+/// interfere with the end-around carry logic.
+///
+/// ## Feature `num_traits`
+///
+/// Without this feature `OnesOne` is a **sealed trait** implemented only for
+/// `u8`, `u16`, `u32`, `u64`, `u128`, and `usize`; `ONE`,
+/// `ones_wrapping_add`, and `ones_wrapping_sub` are provided by those impls.
+///
+/// With this feature `OnesOne` becomes a **blanket extension trait** over
+/// [`num_traits::Unsigned`] `+` [`num_traits::WrappingAdd`] `+`
+/// [`num_traits::WrappingSub`] `+` [`core::ops::Not`].  Any type satisfying
+/// those bounds automatically implements `OnesOne`; the three methods and the
+/// constant are no longer part of the trait itself — they are supplied
+/// directly by the `num-traits` bounds in [`OnesDeps`].
+#[cfg(not(feature = "num_traits"))]
 pub trait OnesOne: private::Sealed + Sized + Copy {
     /// The value `1` for this type.
-    ///
-    /// Provided by the hand-rolled impls when the `num_traits` feature is
-    /// disabled; shadowed by [`num_traits::One::one`] when it is enabled.
-    #[cfg(not(feature = "num_traits"))]
     const ONE: Self;
-
-    /// Wrapping addition.
-    ///
-    /// Provided by the hand-rolled impls when the `num_traits` feature is
-    /// disabled; the `Add` impl on `OnesSigned` calls
-    /// [`num_traits::WrappingAdd::wrapping_add`] directly when it is enabled.
-    #[cfg(not(feature = "num_traits"))]
+    /// Wrapping addition — equivalent to `u*::wrapping_add`.
     fn ones_wrapping_add(self, rhs: Self) -> Self;
-
-    /// Wrapping subtraction.
-    ///
-    /// Provided by the hand-rolled impls when the `num_traits` feature is
-    /// disabled; unused when it is enabled (subtraction delegates to `Add`
-    /// which uses `WrappingAdd`).
-    #[cfg(not(feature = "num_traits"))]
+    /// Wrapping subtraction — equivalent to `u*::wrapping_sub`.
     fn ones_wrapping_sub(self, rhs: Self) -> Self;
 }
 
+#[cfg(feature = "num_traits")]
+pub trait OnesOne: Unsigned + WrappingAdd + WrappingSub + Not<Output = Self> {}
+
+// ---------------------------------------------------------------------------
+// Impls of OnesOne
+// ---------------------------------------------------------------------------
+
+#[cfg(not(feature = "num_traits"))]
 mod private {
     pub trait Sealed {}
     impl Sealed for u8    {}
@@ -52,7 +65,6 @@ mod private {
     impl Sealed for usize {}
 }
 
-// Hand-rolled impls — only compiled when `num_traits` is not in use.
 #[cfg(not(feature = "num_traits"))]
 macro_rules! impl_ones_one {
     ($($t:ty),+) => {$(
@@ -66,26 +78,25 @@ macro_rules! impl_ones_one {
 #[cfg(not(feature = "num_traits"))]
 impl_ones_one!(u8, u16, u32, u64, u128, usize);
 
-// Trivial marker impls — always compiled regardless of feature flags,
-// because the seal itself must always be satisfied.
+/// Blanket impl: every type satisfying the `num-traits` bounds is
+/// automatically a valid `OnesOne`.
 #[cfg(feature = "num_traits")]
-macro_rules! impl_ones_one_marker {
-    ($($t:ty),+) => {$(
-        impl OnesOne for $t {}
-    )+};
-}
-#[cfg(feature = "num_traits")]
-impl_ones_one_marker!(u8, u16, u32, u64, u128, usize);
+impl<T> OnesOne for T where T: Unsigned + WrappingAdd + WrappingSub + Not<Output = Self> {}
 
-/// Blanket bound required by `OnesSigned<T>`.
+// ---------------------------------------------------------------------------
+// OnesDeps — the combined bound used by OnesSigned's operator impls
+// ---------------------------------------------------------------------------
+
+/// Blanket bound required by [`OnesSigned<T>`]'s operator impls.
 ///
-/// When the `num_traits` feature is disabled this pulls in [`OnesOne`] (which
-/// carries `ONE`, `ones_wrapping_add`, and `ones_wrapping_sub`) together with
-/// the standard operator traits.
+/// Without `num_traits`: requires [`OnesOne`] (which carries `ONE`,
+/// `ones_wrapping_add`, and `ones_wrapping_sub`) plus the standard operator
+/// traits.
 ///
-/// When the `num_traits` feature is enabled [`OnesOne`] is a pure marker and
-/// the three capabilities are instead supplied by [`num_traits::One`],
-/// [`num_traits::WrappingAdd`], and [`num_traits::WrappingSub`].
+/// With `num_traits`: requires [`OnesOne`] (which itself requires
+/// [`Unsigned`] + [`WrappingAdd`] + [`WrappingSub`] + [`Not`]) plus
+/// [`core::ops::Add`] and [`core::ops::Sub`] for the operator syntax used
+/// inside the `Add`/`Sub` impls on `OnesSigned`.
 #[cfg(not(feature = "num_traits"))]
 pub trait OnesDeps:
     Sized
@@ -119,10 +130,6 @@ pub trait OnesDeps:
     + Default
     + PartialOrd
     + OnesOne
-    + One
-    + WrappingAdd
-    + WrappingSub
-    + Not<Output = Self>
     + Add<Self, Output = Self>
     + Sub<Self, Output = Self>
 {
@@ -135,14 +142,14 @@ impl<T> OnesDeps for T where
         + Default
         + PartialOrd
         + OnesOne
-        + One
-        + WrappingAdd
-        + WrappingSub
-        + Not<Output = Self>
         + Add<Self, Output = Self>
         + Sub<Self, Output = Self>
 {
 }
+
+// ---------------------------------------------------------------------------
+// OnesSigned
+// ---------------------------------------------------------------------------
 
 /// A ones'-complement-encoded value whose bit pattern is stored in an
 /// unsigned integer `T`.
@@ -197,6 +204,10 @@ impl<T: OnesDeps> Sub for OnesSigned<T> {
         self + OnesSigned(!rhs.0)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
