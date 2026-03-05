@@ -42,6 +42,16 @@ int main(void) {
     EXPECT_EQ("ONES_COMPLEMENT_64(0x5A5A5A5A5A5A5A5A)", ONES_COMPLEMENT_64(0x5A5A5A5A5A5A5A5A), 0xA5A5A5A5A5A5A5A5);
     EXPECT_EQ("ONES_COMPLEMENT_64(0xFFFFFFFFFFFFFFFF)", ONES_COMPLEMENT_64(0xFFFFFFFFFFFFFFFF), 0x0000000000000000);
 
+    /* macro add ------------------------------------------------------------ */
+    EXPECT_EQ("ONES_ADD_8(200, 100)",   ONES_ADD_8(200, 100),   45);
+    EXPECT_EQ("ONES_ADD_16(60000, 10000)", ONES_ADD_16(60000, 10000), 4465);
+    EXPECT_EQ("ONES_ADD_32(4000000000, 1000000000)", ONES_ADD_32(4000000000U, 1000000000U), 705032705);
+    
+    /* macro subtract ------------------------------------------------------- */
+    EXPECT_EQ("ONES_SUBTRACT_8(10, 5)", ONES_SUBTRACT_8(10, 5), 5);
+    EXPECT_EQ("ONES_SUBTRACT_8(5, 5)",  ONES_SUBTRACT_8(5, 5),  255); /* neg zero */
+    EXPECT_EQ("ONES_SUBTRACT_16(100, 10)", ONES_SUBTRACT_16(100, 10), 90);
+
     /* add ------------------------------------------------------------------ */
     EXPECT_EQ("add(3,4)   4-bit no-carry",       ones_add(bw4, 3, 4),   7);
     EXPECT_EQ("add(6,12)  4-bit end-around",     ones_add(bw4, 6, 12),  3);

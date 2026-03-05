@@ -29,13 +29,42 @@ static inline uint64_t ones_complement(ones_bitwidth_t bw, uint64_t a) {
     return (mod - 1) - a;
 }
 
+/* Type-agnostic ones' complement operations using _Generic to handle
+ * integer promotion for small types (uint8_t, uint16_t). */
+#define ONES_COMPLEMENT(a) _Generic((a), \
+    uint8_t:  (uint8_t)~(uint8_t)(a), \
+    uint16_t: (uint16_t)~(uint16_t)(a), \
+    uint32_t: (uint32_t)~(uint32_t)(a), \
+    uint64_t: (uint64_t)~(uint64_t)(a), \
+    default:  ~(a) \
+)
+
+#define ONES_ADD(a, b) _Generic((a), \
+    uint8_t:  (uint8_t)((uint8_t)(a) + (uint8_t)(b) + ((uint8_t)((uint8_t)(a) + (uint8_t)(b)) < (uint8_t)(a))), \
+    uint16_t: (uint16_t)((uint16_t)(a) + (uint16_t)(b) + ((uint16_t)((uint16_t)(a) + (uint16_t)(b)) < (uint16_t)(a))), \
+    uint32_t: (uint32_t)((uint32_t)(a) + (uint32_t)(b) + ((uint32_t)((uint32_t)(a) + (uint32_t)(b)) < (uint32_t)(a))), \
+    uint64_t: (uint64_t)((uint64_t)(a) + (uint64_t)(b) + ((uint64_t)((uint64_t)(a) + (uint64_t)(b)) < (uint64_t)(a))), \
+    default:  ((a) + (b) + ((a) + (b) < (a))) \
+)
+
+#define ONES_SUBTRACT(a, b) ONES_ADD(a, ONES_COMPLEMENT(b))
+
 /* Macros for fixed-width ones' complement for entire uintN_ts.
- * These complement the runtime bitwidth logic by providing efficient
- * compile-time alternatives for standard integer types. */
-#define ONES_COMPLEMENT_8(a)  ((uint8_t)~(uint8_t)(a))
-#define ONES_COMPLEMENT_16(a) ((uint16_t)~(uint16_t)(a))
-#define ONES_COMPLEMENT_32(a) ((uint32_t)~(uint32_t)(a))
-#define ONES_COMPLEMENT_64(a) ((uint64_t)~(uint64_t)(a))
+ * These forward to the type-agnostic macros. */
+#define ONES_COMPLEMENT_8(a)  ONES_COMPLEMENT((uint8_t)(a))
+#define ONES_COMPLEMENT_16(a) ONES_COMPLEMENT((uint16_t)(a))
+#define ONES_COMPLEMENT_32(a) ONES_COMPLEMENT((uint32_t)(a))
+#define ONES_COMPLEMENT_64(a) ONES_COMPLEMENT((uint64_t)(a))
+
+#define ONES_ADD_8(a, b)      ONES_ADD((uint8_t)(a), (uint8_t)(b))
+#define ONES_ADD_16(a, b)     ONES_ADD((uint16_t)(a), (uint16_t)(b))
+#define ONES_ADD_32(a, b)     ONES_ADD((uint32_t)(a), (uint32_t)(b))
+#define ONES_ADD_64(a, b)     ONES_ADD((uint64_t)(a), (uint64_t)(b))
+
+#define ONES_SUBTRACT_8(a, b)  ONES_SUBTRACT((uint8_t)(a), (uint8_t)(b))
+#define ONES_SUBTRACT_16(a, b) ONES_SUBTRACT((uint16_t)(a), (uint16_t)(b))
+#define ONES_SUBTRACT_32(a, b) ONES_SUBTRACT((uint32_t)(a), (uint32_t)(b))
+#define ONES_SUBTRACT_64(a, b) ONES_SUBTRACT((uint64_t)(a), (uint64_t)(b))
 
 /* ones_add
  * Add two ones' complement values a and b with end-around carry.
