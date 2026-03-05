@@ -29,6 +29,14 @@ static inline uint64_t ones_complement(ones_bitwidth_t bw, uint64_t a) {
     return (mod - 1) - a;
 }
 
+/* Macros for fixed-width ones' complement for entire uintN_ts.
+ * These complement the runtime bitwidth logic by providing efficient
+ * compile-time alternatives for standard integer types. */
+#define ONES_COMPLEMENT_8(a)  ((uint8_t)~(uint8_t)(a))
+#define ONES_COMPLEMENT_16(a) ((uint16_t)~(uint16_t)(a))
+#define ONES_COMPLEMENT_32(a) ((uint32_t)~(uint32_t)(a))
+#define ONES_COMPLEMENT_64(a) ((uint64_t)~(uint64_t)(a))
+
 /* ones_add
  * Add two ones' complement values a and b with end-around carry.
  * Equivalent to: (sum & mask) + carry */

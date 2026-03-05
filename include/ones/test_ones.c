@@ -32,6 +32,16 @@ int main(void) {
     EXPECT_EQ("complement(0)  8-bit",  ones_complement(bw8, 0),  255);
     EXPECT_EQ("complement(255) 8-bit", ones_complement(bw8, 255),  0);
 
+    /* macro complement ----------------------------------------------------- */
+    EXPECT_EQ("ONES_COMPLEMENT_8(0x5A)",  ONES_COMPLEMENT_8(0x5A),  0xA5);
+    EXPECT_EQ("ONES_COMPLEMENT_8(0xFF)",  ONES_COMPLEMENT_8(0xFF),  0x00);
+    EXPECT_EQ("ONES_COMPLEMENT_16(0x5A5A)", ONES_COMPLEMENT_16(0x5A5A), 0xA5A5);
+    EXPECT_EQ("ONES_COMPLEMENT_16(0xFFFF)", ONES_COMPLEMENT_16(0xFFFF), 0x0000);
+    EXPECT_EQ("ONES_COMPLEMENT_32(0x5A5A5A5A)", ONES_COMPLEMENT_32(0x5A5A5A5A), 0xA5A5A5A5);
+    EXPECT_EQ("ONES_COMPLEMENT_32(0xFFFFFFFF)", ONES_COMPLEMENT_32(0xFFFFFFFF), 0x00000000);
+    EXPECT_EQ("ONES_COMPLEMENT_64(0x5A5A5A5A5A5A5A5A)", ONES_COMPLEMENT_64(0x5A5A5A5A5A5A5A5A), 0xA5A5A5A5A5A5A5A5);
+    EXPECT_EQ("ONES_COMPLEMENT_64(0xFFFFFFFFFFFFFFFF)", ONES_COMPLEMENT_64(0xFFFFFFFFFFFFFFFF), 0x0000000000000000);
+
     /* add ------------------------------------------------------------------ */
     EXPECT_EQ("add(3,4)   4-bit no-carry",       ones_add(bw4, 3, 4),   7);
     EXPECT_EQ("add(6,12)  4-bit end-around",     ones_add(bw4, 6, 12),  3);
